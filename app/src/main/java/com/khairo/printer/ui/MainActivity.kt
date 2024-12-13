@@ -51,6 +51,7 @@ import java.net.Socket
 import java.text.SimpleDateFormat
 import java.util.Date
 import com.khairo.async.*
+import org.json.JSONObject
 import java.util.*
 
 class MainActivity : AppCompatActivity() {
@@ -172,29 +173,52 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    fun processPrintRequest(requestBody: String) {
+    fun formatTicket(data: JSONObject): String {
         try {
-            val json = org.json.JSONObject(requestBody)
-            val title = json.getString("title")
-            val items = json.getJSONArray("items")
-            val total = json.getString("total")
-            val footer = json.getString("footer")
+            // Extração dos dados do JSON
+            val unidade = "Minha unidade" // Pode ser fixo ou extraído de outro campo
+            val ticketFormat = data.getJSONObject("senha").getString("format")
+            val prioridade = data.getJSONObject("prioridade").getString("nome")
+            val servico = data.getJSONObject("servico").getString("nome")
+            val dataChegada = data.getString("dataChegada")
+            val horaChegada = dataChegada.substring(11, 16) // Extrai a hora no formato HH:mm
+            val dataFormatada = dataChegada.substring(0, 10) // Extrai a data no formato AAAA-MM-DD
 
+            // Montagem do ticket formatado
             val stringBuilder = StringBuilder()
             stringBuilder.append("[L]\n")
-            stringBuilder.append("[C]<font size='big'>$title</font>\n")
-            stringBuilder.append("[C]==============================\n")
-            for (i in 0 until items.length()) {
-                val item = items.getJSONObject(i)
-                stringBuilder.append("[L]${item.getString("name")}[R]${item.getString("price")}\n")
-            }
-            stringBuilder.append("[C]==============================\n")
-            stringBuilder.append("[R]Total: [R]$total\n")
-            stringBuilder.append("[C]$footer\n")
+            stringBuilder.append("[C]<font size='big'>$unidade</font>\n")
+            stringBuilder.append("[C]Novo SGA\n\n")
+
+            stringBuilder.append("[C]<font size='tall'>$prioridade</font>\n\n")
+            stringBuilder.append("[C]<font size='big'>$ticketFormat</font>\n\n")
+
+            stringBuilder.append("[C]$servico\n\n")
+
+            stringBuilder.append("[C]$dataFormatada\n")
+            stringBuilder.append("[C]Hora de chegada $horaChegada\n")
+            stringBuilder.append("[C]( Horário local )\n\n")
+
+            stringBuilder.append("[C]Novo SGA\n")
             stringBuilder.append("[L]\n")
             stringBuilder.append("[L]\n")
 
-            printCustomContent(stringBuilder.toString())
+            return stringBuilder.toString()
+        } catch (e: Exception) {
+            e.printStackTrace()
+            return "Erro ao formatar o ticket."
+        }
+    }
+
+    fun processPrintRequest(requestBody: String) {
+        try {
+            val jsonData = JSONObject(requestBody)
+
+            // Formata o ticket
+            val formattedTicket = formatTicket(jsonData)
+
+            // Envia para impressão
+            printCustomContent(formattedTicket)
         } catch (e: Exception) {
             e.printStackTrace()
         }
