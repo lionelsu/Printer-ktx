@@ -1,6 +1,8 @@
 <manifest package="com.khairo.escposprinter"
     xmlns:android="http://schemas.android.com/apk/res/android">
 
+    <uses-feature android:name="android.hardware.usb.host" />
+
     <application
         android:name="com.khairo.common.App"
         android:allowBackup="true"

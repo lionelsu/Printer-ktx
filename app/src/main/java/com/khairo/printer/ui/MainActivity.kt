@@ -4,6 +4,7 @@ import android.Manifest
 import android.annotation.SuppressLint
 import android.app.AlertDialog
 import android.app.PendingIntent
+import android.app.assist.AssistContent
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -12,15 +13,20 @@ import android.content.pm.PackageManager
 import android.hardware.usb.UsbDevice
 import android.hardware.usb.UsbManager
 import android.os.AsyncTask
+import com.khairo.printer.R
 import android.os.Bundle
 import android.os.Parcelable
 import android.util.DisplayMetrics
+import android.widget.Button
+import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.databinding.DataBindingUtil
 import androidx.lifecycle.lifecycleScope
-import com.khairo.async.*
+import com.khairo.async.AsyncBluetoothEscPosPrint
+import com.khairo.async.AsyncEscPosPrinter
+import com.khairo.async.AsyncUsbEscPosPrint
 import com.khairo.coroutines.CoroutinesEscPosPrint
 import com.khairo.coroutines.CoroutinesEscPosPrinter
 import com.khairo.escposprinter.EscPosPrinter
@@ -33,15 +39,23 @@ import com.khairo.escposprinter.exceptions.EscPosConnectionException
 import com.khairo.escposprinter.exceptions.EscPosEncodingException
 import com.khairo.escposprinter.exceptions.EscPosParserException
 import com.khairo.escposprinter.textparser.PrinterTextParserImg
-import com.khairo.printer.R
 import com.khairo.printer.databinding.ActivityMainBinding
 import com.khairo.printer.utils.printViaWifi
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import java.io.BufferedReader
+import java.io.InputStreamReader
+import java.net.ServerSocket
+import java.net.Socket
 import java.text.SimpleDateFormat
+import java.util.Date
+import com.khairo.async.*
 import java.util.*
 
 class MainActivity : AppCompatActivity() {
+
+    private var isServerRunning = false
 
     private lateinit var binding: ActivityMainBinding
 
@@ -50,6 +64,8 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = DataBindingUtil.setContentView(this, R.layout.activity_main)
+
+        initializeUsbPrinter()
 
         binding.apply {
             buttonTcp.setOnClickListener {
@@ -65,6 +81,138 @@ class MainActivity : AppCompatActivity() {
             buttonUsb.setOnClickListener {
                 printUsb()
             }
+        }
+        // Teste
+        // Iniciar servidor HTTP em paralelo
+        CoroutineScope(Dispatchers.IO).launch {
+            startHttpServer(9080)
+        }
+    }
+
+
+    override fun onDestroy() {
+        super.onDestroy()
+        isServerRunning = false
+    }
+
+    fun initializeUsbPrinter() {
+        val usbConnection = UsbPrintersConnections.selectFirstConnected(this)
+        val usbManager = this.getSystemService(USB_SERVICE) as UsbManager
+        if (usbConnection == null) {
+            println("No USB printer found at initialization.")
+            return
+        }
+        // Solicita permissão sem acionar impressão
+        val permissionIntent = PendingIntent.getBroadcast(this, 0, Intent(ACTION_USB_PERMISSION), 0)
+        val filter = IntentFilter(ACTION_USB_PERMISSION)
+        registerReceiver(usbNewReceiver, filter)
+        usbManager.requestPermission(usbConnection.device, permissionIntent)
+    }
+
+    private fun startHttpServer(port: Int) {
+        isServerRunning = true
+        val serverSocket = ServerSocket(port)
+
+        while (isServerRunning) {
+            try {
+                val clientSocket: Socket = serverSocket.accept()
+                handleClient(clientSocket)
+            } catch (e: Exception) {
+                e.printStackTrace()
+                break
+            }
+        }
+        serverSocket.close()
+    }
+
+    private fun handleClient(clientSocket: Socket) {
+        clientSocket.use { socket ->
+            val reader = BufferedReader(InputStreamReader(socket.getInputStream()))
+            val requestLine = reader.readLine() ?: return
+
+            // Verifica o método HTTP
+            if (requestLine.contains("OPTIONS")) {
+                // Responder a requisições OPTIONS para CORS
+                val responseHeaders = """
+                HTTP/1.1 204 No Content
+                Access-Control-Allow-Origin: *
+                Access-Control-Allow-Methods: GET, POST, OPTIONS
+                Access-Control-Allow-Headers: Content-Type
+                Access-Control-Max-Age: 3600
+                
+            """.trimIndent()
+                socket.getOutputStream().write(responseHeaders.toByteArray())
+                return
+            }
+
+            // Verificar se a requisição é para /print
+            if (requestLine.contains("POST /print")) {
+                val headers = mutableListOf<String>()
+                var line: String?
+                while (reader.readLine().also { line = it } != null && line!!.isNotEmpty()) {
+                    headers.add(line!!)
+                }
+
+                val contentLength = headers.find { it.startsWith("Content-Length:") }
+                    ?.split(":")?.get(1)?.trim()?.toInt() ?: 0
+                val body = CharArray(contentLength)
+                reader.read(body, 0, contentLength)
+
+                val requestBody = String(body)
+                println("Request Body: $requestBody")
+
+                processPrintRequest(requestBody)
+
+                val response = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\nPrint triggered via USB"
+                socket.getOutputStream().write(response.toByteArray())
+            } else {
+                val response = "HTTP/1.1 404 Not Found\r\nContent-Type: text/plain\r\n\r\nInvalid Endpoint"
+                socket.getOutputStream().write(response.toByteArray())
+            }
+        }
+    }
+
+    fun processPrintRequest(requestBody: String) {
+        try {
+            val json = org.json.JSONObject(requestBody)
+            val title = json.getString("title")
+            val items = json.getJSONArray("items")
+            val total = json.getString("total")
+            val footer = json.getString("footer")
+
+            val stringBuilder = StringBuilder()
+            stringBuilder.append("[L]\n")
+            stringBuilder.append("[C]<font size='big'>$title</font>\n")
+            stringBuilder.append("[C]==============================\n")
+            for (i in 0 until items.length()) {
+                val item = items.getJSONObject(i)
+                stringBuilder.append("[L]${item.getString("name")}[R]${item.getString("price")}\n")
+            }
+            stringBuilder.append("[C]==============================\n")
+            stringBuilder.append("[R]Total: [R]$total\n")
+            stringBuilder.append("[C]$footer\n")
+            stringBuilder.append("[L]\n")
+            stringBuilder.append("[L]\n")
+
+            printCustomContent(stringBuilder.toString())
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    fun printCustomContent(content: String) {
+        val usbConnection = UsbPrintersConnections.selectFirstConnected(this)
+        if (usbConnection == null) {
+            runOnUiThread {
+                Toast.makeText(this, "No USB printer found.", Toast.LENGTH_SHORT).show()
+            }
+            return
+        }
+        try {
+            val printer = EscPosPrinter(usbConnection, 203, 48f, 32)
+            printer.printFormattedTextAndCut(content)
+        } catch (e: Exception) {
+            e.printStackTrace()
         }
     }
 
@@ -133,6 +281,24 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private val usbNewReceiver: BroadcastReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            val action = intent.action
+            if (ACTION_USB_PERMISSION == action) {
+                synchronized(this) {
+                    val usbManager = getSystemService(USB_SERVICE) as UsbManager
+                    val usbDevice =
+                        intent.getParcelableExtra<Parcelable>(UsbManager.EXTRA_DEVICE) as UsbDevice?
+                    if (intent.getBooleanExtra(UsbManager.EXTRA_PERMISSION_GRANTED, false)) {
+                        println("Usb permission granted")
+                    } else {
+                        println("Usb permissin denied")
+                    }
+                }
+            }
+        }
+    }
+
     fun printUsb() {
         val usbConnection = UsbPrintersConnections.selectFirstConnected(this)
         val usbManager = this.getSystemService(USB_SERVICE) as UsbManager
@@ -145,6 +311,7 @@ class MainActivity : AppCompatActivity() {
         }
         val permissionIntent = PendingIntent.getBroadcast(this, 0, Intent(ACTION_USB_PERMISSION), 0)
         val filter = IntentFilter(ACTION_USB_PERMISSION)
+
         registerReceiver(usbReceiver, filter)
         usbManager.requestPermission(usbConnection.device, permissionIntent)
     }
