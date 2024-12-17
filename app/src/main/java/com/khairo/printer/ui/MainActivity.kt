@@ -85,9 +85,11 @@ class MainActivity : AppCompatActivity() {
         }
         // Teste
         // Iniciar servidor HTTP em paralelo
-        CoroutineScope(Dispatchers.IO).launch {
-            startHttpServer(9080)
-        }
+        // CoroutineScope(Dispatchers.IO).launch {
+        //     startHttpServer(9080)
+        // }
+        val serviceIntent = Intent(this, HttpServerService::class.java)
+        ContextCompat.startForegroundService(this, serviceIntent)
     }
 
 
@@ -184,6 +186,8 @@ class MainActivity : AppCompatActivity() {
             val horaChegada = dataChegada.substring(11, 16) // Extrai a hora no formato HH:mm
             val dataFormatada = dataChegada.substring(0, 10) // Extrai a data no formato AAAA-MM-DD
 
+            val horarioLocal = normalizeText("Horário local")
+
             // Montagem do ticket formatado
             val stringBuilder = StringBuilder()
             stringBuilder.append("[L]\n")
@@ -197,7 +201,7 @@ class MainActivity : AppCompatActivity() {
 
             stringBuilder.append("[C]$dataFormatada\n")
             stringBuilder.append("[C]Hora de chegada $horaChegada\n")
-            stringBuilder.append("[C]( Horário local )\n\n")
+            stringBuilder.append("[C]( $horarioLocal )\n\n")
 
             stringBuilder.append("[C]Novo SGA\n")
             stringBuilder.append("[L]\n")
@@ -208,6 +212,26 @@ class MainActivity : AppCompatActivity() {
             e.printStackTrace()
             return "Erro ao formatar o ticket."
         }
+    }
+
+    fun normalizeText(text: String): String {
+        return text.replace("á", "a")
+            .replace("é", "e")
+            .replace("í", "i")
+            .replace("ó", "o")
+            .replace("ú", "u")
+            .replace("Á", "A")
+            .replace("É", "E")
+            .replace("Í", "I")
+            .replace("Ó", "O")
+            .replace("Ú", "U")
+            .replace("ç", "c")
+            .replace("Ç", "C")
+            .replace("ã", "a")
+            .replace("õ", "o")
+            .replace("â", "a")
+            .replace("ê", "e")
+            .replace("ô", "o")
     }
 
     fun processPrintRequest(requestBody: String) {

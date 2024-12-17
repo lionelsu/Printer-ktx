@@ -29,5 +29,11 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- Registro do Foreground Service -->
+        <service
+            android:name=".ui.HttpServerService"
+            android:foregroundServiceType="connectedDevice"
+            android:exported="true" />
     </application>
 </manifest>
