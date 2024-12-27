@@ -132,26 +132,25 @@ class HttpServerService : Service() {
             val horaChegada = dataChegada.substring(11, 16) // Extrai a hora no formato HH:mm
             val dataFormatada = dataChegada.substring(0, 10) // Extrai a data no formato AAAA-MM-DD
 
-            val horarioLocal = normalizeText("Horário local")
+            // val horarioLocal = normalizeText("Horário local")
 
             // Montagem do ticket formatado
             val stringBuilder = StringBuilder()
             stringBuilder.append("[C]<img>$imageHex</img>\n") // Adiciona a imagem
             stringBuilder.append("[L]\n")
-            stringBuilder.append("[C]<font size='big'>$unidade</font>\n")
-            stringBuilder.append("[C]Novo SGA\n\n")
+            stringBuilder.append("[C]<font size='big'>${normalizeText(unidade)}</font>\n")
+            // stringBuilder.append("[C]Novo SGA\n\n")
 
-            stringBuilder.append("[C]<font size='tall'>$prioridade</font>\n\n")
+            stringBuilder.append("[C]<font size='tall'>${normalizeText(prioridade)}</font>\n\n")
             stringBuilder.append("[C]<font size='big'>$ticketFormat</font>\n\n")
 
-            stringBuilder.append("[C]$servico\n\n")
+            stringBuilder.append("[C]${normalizeText(servico)}\n\n")
 
             stringBuilder.append("[C]$dataFormatada\n")
             stringBuilder.append("[C]Hora de chegada $horaChegada\n")
-            stringBuilder.append("[C]( $horarioLocal )\n\n")
+            // stringBuilder.append("[C]( $horarioLocal )\n\n")
 
-            stringBuilder.append("[C]Novo SGA\n")
-            stringBuilder.append("[L]\n")
+            // stringBuilder.append("[C]Novo SGA\n")
             stringBuilder.append("[L]\n")
 
             return stringBuilder.toString()
